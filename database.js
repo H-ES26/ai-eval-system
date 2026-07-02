@@ -1,25 +1,21 @@
-const fs = require("fs");
-const path = require("path");
+const { sql } = require("@vercel/postgres");
 
-const DB_PATH = path.join(process.cwd(), "evaluations.json");
-
-// 데이터베이스 초기화 (파일이 없으면 생성)
-function initDb() {
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({ evaluations: [] }, null, 2));
-  }
-}
-
-// 데이터베이스 읽기
-function readDb() {
-  initDb();
-  const data = fs.readFileSync(DB_PATH, "utf-8");
-  return JSON.parse(data);
-}
-
-// 데이터베이스 쓰기
-function writeDb(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+// 테이블 초기화 (없으면 생성)
+async function initDb() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS evaluations (
+      id SERIAL PRIMARY KEY,
+      employee_id TEXT NOT NULL,
+      employee_name TEXT NOT NULL,
+      chat_history JSONB NOT NULL,
+      final_answer TEXT NOT NULL,
+      total_score INTEGER NOT NULL,
+      prompting_score INTEGER NOT NULL,
+      answer_score INTEGER NOT NULL,
+      ai_comment TEXT NOT NULL,
+      submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
 }
 
 // 평가 결과 저장
@@ -33,44 +29,65 @@ async function insertEvaluation({
   answerScore,
   aiComment,
 }) {
-  const db = readDb();
-  
-  const newEvaluation = {
-    id: db.evaluations.length > 0 ? Math.max(...db.evaluations.map(e => e.id)) + 1 : 1,
-    employee_id: employeeId,
-    employee_name: employeeName,
-    chat_history: chatHistory,
-    final_answer: finalAnswer,
-    total_score: totalScore,
-    prompting_score: promptingScore,
-    answer_score: answerScore,
-    ai_comment: aiComment,
-    submitted_at: new Date().toISOString(),
-  };
+  // 테이블이 없으면 생성
+  await initDb();
 
-  db.evaluations.push(newEvaluation);
-  writeDb(db);
-  
-  return newEvaluation;
+  const result = await sql`
+    INSERT INTO evaluations (
+      employee_id,
+      employee_name,
+      chat_history,
+      final_answer,
+      total_score,
+      prompting_score,
+      answer_score,
+      ai_comment
+    ) VALUES (
+      ${employeeId},
+      ${employeeName},
+      ${JSON.stringify(chatHistory)},
+      ${finalAnswer},
+      ${totalScore},
+      ${promptingScore},
+      ${answerScore},
+      ${aiComment}
+    )
+    RETURNING *
+  `;
+
+  return result.rows[0];
 }
 
 // 모든 평가 결과 조회
 async function getAllEvaluations() {
-  const db = readDb();
-  // 최신순 정렬
-  return db.evaluations.sort((a, b) => 
-    new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
-  );
+  // 테이블이 없으면 생성
+  await initDb();
+
+  const result = await sql`
+    SELECT * FROM evaluations 
+    ORDER BY submitted_at DESC
+  `;
+
+  return result.rows;
 }
 
 // 특정 평가 결과 조회
 async function getEvaluationById(id) {
-  const db = readDb();
-  return db.evaluations.find(e => e.id === id) || null;
+  // 테이블이 없으면 생성
+  await initDb();
+
+  const result = await sql`
+    SELECT * FROM evaluations 
+    WHERE id = ${id}
+  `;
+
+  return result.rows[0] || null;
 }
 
 module.exports = {
+  initDb,
   insertEvaluation,
   getAllEvaluations,
   getEvaluationById,
 };
+
