@@ -1,8 +1,13 @@
 const { createClient } = require("@vercel/postgres");
 
+// 클라이언트 생성 헬퍼 함수
+function getClient() {
+  return createClient({ connectionString: process.env.POSTGRES_URL_NON_POOLING });
+}
+
 // 테이블 초기화 (없으면 생성)
 async function initDb() {
-  const client = createClient();
+  const client = getClient();
   await client.connect();
   
   try {
@@ -39,7 +44,7 @@ async function insertEvaluation({
   // 테이블이 없으면 생성
   await initDb();
 
-  const client = createClient();
+  const client = getClient();
   await client.connect();
 
   try {
@@ -78,7 +83,7 @@ async function getAllEvaluations() {
   // 테이블이 없으면 생성
   await initDb();
 
-  const client = createClient();
+  const client = getClient();
   await client.connect();
 
   try {
@@ -98,7 +103,7 @@ async function getEvaluationById(id) {
   // 테이블이 없으면 생성
   await initDb();
 
-  const client = createClient();
+  const client = getClient();
   await client.connect();
 
   try {

@@ -58,3 +58,8 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// 환경변수에 등록된 모델을 쓰고, 만약 없다면 기본값으로 gemini-2.5-flash를 쓴다는 뜻입니다.
+const model = genAI.getGenerativeModel({ 
+  model: process.env.GEMINI_MODEL || "gemini-2.5-flash" 
+});
