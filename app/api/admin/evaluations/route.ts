@@ -2,43 +2,52 @@ import { neon } from "@neondatabase/serverless";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   const dbUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL;
-
-  if (!dbUrl) {
-    return NextResponse.json({ error: "DB 주소를 찾을 수 없습니다." }, { status: 500 });
-  }
+  if (!dbUrl) return NextResponse.json({ error: "DB 주소 없음" }, { status: 500 });
 
   const sql = neon(dbUrl);
 
   try {
-    const rawEvaluations = await sql`SELECT * FROM evaluations ORDER BY created_at DESC`;
+    // 1. DB에서 원본 데이터를 가져옵니다.
+    const rows = await sql`SELECT * FROM evaluations ORDER BY created_at DESC`;
 
-    const formattedData = rawEvaluations.map((row) => {
+    // 2. 프론트엔드 화면이 찾는 '정확한 이름표'로 바꿔서 포장합니다.
+    const formatted = rows.map((row) => {
+      // 점수와 코멘트 파싱
       let parsedResult: any = {};
       try {
-        parsedResult = JSON.parse(row.evaluation_result);
-      } catch (e) {
-        console.log("JSON 파싱 에러");
-      }
+        if (row.evaluation_result) parsedResult = JSON.parse(row.evaluation_result);
+      } catch (e) { console.log("평가결과 파싱 에러"); }
 
+      // 채팅 내역 파싱
+      let chatHistoryArray = [];
+      try {
+        if (row.chat_history) {
+          chatHistoryArray = typeof row.chat_history === 'string' ? JSON.parse(row.chat_history) : row.chat_history;
+        }
+      } catch (e) { console.log("채팅내역 파싱 에러"); }
+
+      // ⭐ 프론트엔드 코드가 애타게 찾고 있는 바로 그 이름표들입니다!
       return {
         id: row.id,
-        // 💡 DB에 실제 저장된 사번과 이름을 매핑합니다.
-        empId: row.emp_id || "알 수 없음", 
-        name: row.name || "익명 사용자",
-        totalScore: parsedResult.totalScore || 0,
-        promptingScore: parsedResult.promptingScore || 0,
-        answerScore: parsedResult.answerScore || 0,
-        createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+        employee_id: row.emp_id || "알 수 없음",
+        employee_name: row.name || "익명 사용자",
+        chat_history: chatHistoryArray,
+        final_answer: row.final_answer || "",
+        total_score: parsedResult.totalScore || parsedResult.total_score || 0,
+        prompting_score: parsedResult.promptingScore || parsedResult.promptScore || 0,
+        answer_score: parsedResult.answerScore || 0,
+        // 화면에서 JSON.parse를 하므로 반드시 문자열로 넘깁니다.
+        ai_comment: JSON.stringify(parsedResult.feedback || { prompting: "-", answer: "-", overall: "-" }),
+        submitted_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString()
       };
     });
 
-    return NextResponse.json(formattedData);
-
-  } catch (error) {
-    console.error("관리자 데이터 로딩 에러:", error);
-    return NextResponse.json({ error: "데이터를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
+    return NextResponse.json(formatted);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
