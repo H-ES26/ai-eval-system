@@ -12,15 +12,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // ⭐ 구형 createClient 대신 최신 neon 함수 사용 (코드 1줄로 끝!)
   const sql = neon(dbUrl);
 
   try {
-    const { chatHistory, finalAnswer } = await req.json();
+    // 💡 화면에서 넘겨주는 empId와 name을 추가로 받아옵니다.
+    const { chatHistory, finalAnswer, empId, name } = await req.json();
 
     const apiKey = process.env.GEMINI_API_KEY || "";
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `
       너는 사내 AI 역량 평가자야.
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     try {
       parsedResult = JSON.parse(rawText);
     } catch (e) {
-      console.log("JSON 파싱 실패, AI가 딴소리를 했습니다.");
+      console.log("JSON 파싱 실패");
     }
 
     const safeResult = {
@@ -62,21 +62,27 @@ export async function POST(req: Request) {
         overall: parsedResult?.feedback?.overall || "종합 평가 코멘트를 불러오는 중입니다."
       }
     };
-    
-    // ⭐ connect() 없이 곧바로 sql 쿼리를 날릴 수 있습니다!
+
+    // 💡 테이블 생성 및 기존 테이블에 사번/이름 컬럼이 없다면 안전하게 추가(ALTER)합니다.
     await sql`
       CREATE TABLE IF NOT EXISTS evaluations (
         id SERIAL PRIMARY KEY,
+        emp_id TEXT,
+        name TEXT,
         chat_history TEXT,
         final_answer TEXT,
         evaluation_result TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+    
+    await sql`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS emp_id TEXT;`;
+    await sql`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS name TEXT;`;
 
+    // 💡 DB에 사번(empId)과 이름(name)을 함께 저장합니다.
     await sql`
-      INSERT INTO evaluations (chat_history, final_answer, evaluation_result)
-      VALUES (${JSON.stringify(chatHistory)}, ${finalAnswer}, ${rawText})
+      INSERT INTO evaluations (emp_id, name, chat_history, final_answer, evaluation_result)
+      VALUES (${empId || '알 수 없음'}, ${name || '익명 사용자'}, ${JSON.stringify(chatHistory)}, ${finalAnswer}, ${rawText})
     `;
 
     return NextResponse.json(safeResult);
@@ -88,5 +94,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-  // ⭐ finally 블록의 client.end()도 더 이상 필요 없습니다!
-}    
+}
