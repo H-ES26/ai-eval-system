@@ -1,7 +1,9 @@
 import { neon } from "@neondatabase/serverless";
 import { NextResponse } from "next/server";
 
+// ⭐ Next.js의 지독한 서버 캐시를 영구적으로 완전히 차단합니다.
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   const dbUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL;
@@ -15,7 +17,6 @@ export async function GET() {
   try {
     const rawEvaluations = await sql`SELECT * FROM evaluations ORDER BY created_at DESC`;
 
-    // ⭐ 화면이 원하는 이름표(employee_id, total_score 등)로 완벽하게 통역해 줍니다!
     const formattedData = rawEvaluations.map((row) => {
       let parsedResult: any = {};
       try {
@@ -24,7 +25,6 @@ export async function GET() {
         console.log("JSON 파싱 에러");
       }
 
-      // 채팅 내역이 문자열로 저장되어 있다면 배열로 변환
       let chatHistory = [];
       try {
         chatHistory = typeof row.chat_history === 'string' ? JSON.parse(row.chat_history) : row.chat_history;
@@ -41,12 +41,9 @@ export async function GET() {
         total_score: parsedResult.totalScore || 0,
         prompting_score: parsedResult.promptingScore || parsedResult.promptScore || 0,
         answer_score: parsedResult.answerScore || 0,
-        
-        // 프론트엔드가 JSON.parse(ai_comment)를 하므로, feedback 객체를 문자열로 만들어서 줍니다.
         ai_comment: JSON.stringify(parsedResult.feedback || { 
           prompting: "평가 없음", answer: "평가 없음", overall: "평가 없음" 
         }),
-        
         submitted_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
       };
     });
