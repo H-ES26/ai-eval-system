@@ -1,9 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { createClient } from "@vercel/postgres";
-import { NextResponse } from "next/server";
 
 const apiKey = process.env.GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(apiKey);
+
+import { createClient } from "@vercel/postgres";
+import { NextResponse } from "next/server";
+
 
 export async function POST(req: Request) {
   const dbUrl = process.env.POSTGRES_URL_NON_POOLING;
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.GEMINI_API_KEY || "";
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
     // ⭐ 수정 포인트 1: AI에게 promptingScore 이름과 overall(종합평가) 항목을 명시적으로 요구합니다.
     const prompt = `
