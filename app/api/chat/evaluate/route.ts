@@ -2,6 +2,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@vercel/postgres";
 import { NextResponse } from "next/server";
 
+const apiKey = process.env.GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(apiKey);
+
 export async function POST(req: Request) {
   const dbUrl = process.env.POSTGRES_URL_NON_POOLING;
 
