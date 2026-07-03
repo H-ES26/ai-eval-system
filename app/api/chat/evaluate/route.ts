@@ -1,14 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const apiKey = process.env.GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(apiKey);
-
-import { createClient } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
 import { NextResponse } from "next/server";
 
-
 export async function POST(req: Request) {
-  const dbUrl = process.env.POSTGRES_URL_NON_POOLING;
+  const dbUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL;
 
   if (!dbUrl) {
     return NextResponse.json(
@@ -17,7 +12,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const client = createClient({ connectionString: dbUrl });
+  // ⭐ 구형 createClient 대신 최신 neon 함수 사용 (코드 1줄로 끝!)
+  const sql = neon(dbUrl);
 
   try {
     const { chatHistory, finalAnswer } = await req.json();
@@ -26,7 +22,6 @@ export async function POST(req: Request) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
-    // ⭐ 수정 포인트 1: AI에게 promptingScore 이름과 overall(종합평가) 항목을 명시적으로 요구합니다.
     const prompt = `
       너는 사내 AI 역량 평가자야.
       [채팅 내역]: ${JSON.stringify(chatHistory)}
@@ -57,10 +52,9 @@ export async function POST(req: Request) {
       console.log("JSON 파싱 실패, AI가 딴소리를 했습니다.");
     }
 
-    // ⭐ 수정 포인트 2: 프론트엔드가 정확히 인식하도록 데이터 이름을 맞춰줍니다.
     const safeResult = {
       totalScore: parsedResult?.totalScore || 0,
-      promptingScore: parsedResult?.promptingScore || parsedResult?.promptScore || 0, // 둘 다 대비
+      promptingScore: parsedResult?.promptingScore || parsedResult?.promptScore || 0,
       answerScore: parsedResult?.answerScore || 0,
       feedback: {
         prompting: parsedResult?.feedback?.prompting || "평가 코멘트를 불러오는 중입니다.",
@@ -68,10 +62,9 @@ export async function POST(req: Request) {
         overall: parsedResult?.feedback?.overall || "종합 평가 코멘트를 불러오는 중입니다."
       }
     };
-
-    await client.connect();
     
-    await client.sql`
+    // ⭐ connect() 없이 곧바로 sql 쿼리를 날릴 수 있습니다!
+    await sql`
       CREATE TABLE IF NOT EXISTS evaluations (
         id SERIAL PRIMARY KEY,
         chat_history TEXT,
@@ -81,7 +74,7 @@ export async function POST(req: Request) {
       );
     `;
 
-    await client.sql`
+    await sql`
       INSERT INTO evaluations (chat_history, final_answer, evaluation_result)
       VALUES (${JSON.stringify(chatHistory)}, ${finalAnswer}, ${rawText})
     `;
@@ -94,7 +87,6 @@ export async function POST(req: Request) {
       { error: "평가 처리 중 오류가 발생했습니다." },
       { status: 500 }
     );
-  } finally {
-    await client.end();
   }
+  // ⭐ finally 블록의 client.end()도 더 이상 필요 없습니다!
 }
