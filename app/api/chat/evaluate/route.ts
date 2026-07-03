@@ -2,21 +2,26 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { neon } from "@neondatabase/serverless";
 import { NextResponse } from "next/server";
 
+// ⭐ 방어 1: AI가 대답을 늦게 해도 Vercel이 강제로 끊지 못하도록 최대 60초 대기 허용
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   const dbUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL;
 
   if (!dbUrl) {
-    return NextResponse.json(
-      { error: "DB 주소를 찾을 수 없습니다." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "DB 주소를 찾을 수 없습니다." }, { status: 500 });
   }
 
   const sql = neon(dbUrl);
 
   try {
-    // 💡 화면에서 넘겨주는 empId와 name을 추가로 받아옵니다.
-    const { chatHistory, finalAnswer, empId, name } = await req.json();
+    const body = await req.json();
+
+    // ⭐ 방어 2: 화면에서 어떤 이름표로 보내든, 비어서 오든(undefined) 완벽하게 캐치해서 채워 넣습니다!
+    const empId = body.empId || body.employee_id || body.employeeId || "알 수 없음";
+    const empName = body.name || body.employee_name || body.employeeName || "익명 사용자";
+    const chatHistory = body.chatHistory || body.chat_history || [];
+    const finalAnswer = body.finalAnswer || body.final_answer || body.answer || "";
 
     const apiKey = process.env.GEMINI_API_KEY || "";
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -63,7 +68,6 @@ export async function POST(req: Request) {
       }
     };
 
-    // 💡 테이블 생성 및 기존 테이블에 사번/이름 컬럼이 없다면 안전하게 추가(ALTER)합니다.
     await sql`
       CREATE TABLE IF NOT EXISTS evaluations (
         id SERIAL PRIMARY KEY,
@@ -79,16 +83,17 @@ export async function POST(req: Request) {
     await sql`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS emp_id TEXT;`;
     await sql`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS name TEXT;`;
 
-    // 💡 DB에 사번(empId)과 이름(name)을 함께 저장합니다.
+    // 방어 3: undefined가 하나도 섞여 있지 않은 완벽하게 안전한 값만 DB에 삽입!
     await sql`
       INSERT INTO evaluations (emp_id, name, chat_history, final_answer, evaluation_result)
-      VALUES (${empId || '알 수 없음'}, ${name || '익명 사용자'}, ${JSON.stringify(chatHistory)}, ${finalAnswer}, ${rawText})
+      VALUES (${empId}, ${empName}, ${JSON.stringify(chatHistory)}, ${finalAnswer}, ${rawText || '{}'})
     `;
 
     return NextResponse.json(safeResult);
 
   } catch (error) {
-    console.error("평가 및 DB 저장 에러:", error);
+    // Vercel 로그(Logs) 탭에서 정확한 에러 원인을 파악할 수 있도록 기록
+    console.error("평가 및 DB 저장 에러의 진짜 원인:", error);
     return NextResponse.json(
       { error: "평가 처리 중 오류가 발생했습니다." },
       { status: 500 }
