@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET() {
   const dbUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL;
 
   if (!dbUrl) {
@@ -13,38 +13,48 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const sql = neon(dbUrl);
 
   try {
-    const rawData = await sql`SELECT * FROM evaluations WHERE id = ${params.id}`;
+    const rawEvaluations = await sql`SELECT * FROM evaluations ORDER BY created_at DESC`;
 
-    if (rawData.length === 0) {
-      return NextResponse.json({ error: "해당 평가 기록을 찾을 수 없습니다." }, { status: 404 });
-    }
+    // ⭐ 화면이 원하는 이름표(employee_id, total_score 등)로 완벽하게 통역해 줍니다!
+    const formattedData = rawEvaluations.map((row) => {
+      let parsedResult: any = {};
+      try {
+        parsedResult = JSON.parse(row.evaluation_result);
+      } catch (e) {
+        console.log("JSON 파싱 에러");
+      }
 
-    const row = rawData[0];
-    let parsedResult: any = {};
-    try {
-      parsedResult = JSON.parse(row.evaluation_result);
-    } catch (e) {
-      console.log("JSON 파싱 에러");
-    }
+      // 채팅 내역이 문자열로 저장되어 있다면 배열로 변환
+      let chatHistory = [];
+      try {
+        chatHistory = typeof row.chat_history === 'string' ? JSON.parse(row.chat_history) : row.chat_history;
+      } catch (e) {
+        console.log("채팅 내역 파싱 에러");
+      }
 
-    const formattedDetail = {
-      id: row.id,
-      // 💡 상세 보기 데이터에도 실제 사번과 이름을 전달합니다.
-      empId: row.emp_id || "알 수 없음",
-      name: row.name || "익명 사용자",
-      totalScore: parsedResult.totalScore || 0,
-      promptingScore: parsedResult.promptingScore || 0,
-      answerScore: parsedResult.answerScore || 0,
-      createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-      chatHistory: row.chat_history,
-      finalAnswer: row.final_answer,
-      feedback: parsedResult.feedback || {}
-    };
+      return {
+        id: row.id,
+        employee_id: row.emp_id || "알 수 없음", 
+        employee_name: row.name || "익명 사용자",
+        chat_history: chatHistory || [],
+        final_answer: row.final_answer || "",
+        total_score: parsedResult.totalScore || 0,
+        prompting_score: parsedResult.promptingScore || parsedResult.promptScore || 0,
+        answer_score: parsedResult.answerScore || 0,
+        
+        // 프론트엔드가 JSON.parse(ai_comment)를 하므로, feedback 객체를 문자열로 만들어서 줍니다.
+        ai_comment: JSON.stringify(parsedResult.feedback || { 
+          prompting: "평가 없음", answer: "평가 없음", overall: "평가 없음" 
+        }),
+        
+        submitted_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      };
+    });
 
-    return NextResponse.json(formattedDetail);
+    return NextResponse.json(formattedData);
 
   } catch (error) {
-    console.error("상세 데이터 로딩 에러:", error);
-    return NextResponse.json({ error: "상세 데이터를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
+    console.error("관리자 데이터 로딩 에러:", error);
+    return NextResponse.json({ error: "데이터를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
   }
 }
