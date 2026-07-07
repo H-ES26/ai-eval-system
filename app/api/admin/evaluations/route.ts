@@ -11,38 +11,32 @@ export async function GET() {
   const sql = neon(dbUrl);
 
   try {
-    // 1. DB에서 원본 데이터를 가져옵니다.
+    // DB에서 원본 데이터를 가져옵니다.
     const rows = await sql`SELECT * FROM evaluations ORDER BY created_at DESC`;
 
-    // 2. 프론트엔드 화면이 찾는 '정확한 이름표'로 바꿔서 포장합니다.
+    // 프론트엔드가 기대하는 구조로 변환
     const formatted = rows.map((row) => {
-      // 점수와 코멘트 파싱
-      let parsedResult: any = {};
-      try {
-        if (row.evaluation_result) parsedResult = JSON.parse(row.evaluation_result);
-      } catch (e) { console.log("평가결과 파싱 에러"); }
-
       // 채팅 내역 파싱
       let chatHistoryArray = [];
       try {
         if (row.chat_history) {
-          chatHistoryArray = typeof row.chat_history === 'string' ? JSON.parse(row.chat_history) : row.chat_history;
+          chatHistoryArray = typeof row.chat_history === 'string' 
+            ? JSON.parse(row.chat_history) 
+            : row.chat_history;
         }
-      } catch (e) { console.log("채팅내역 파싱 에러"); }
+      } catch (e) { 
+        console.log("채팅내역 파싱 에러"); 
+      }
 
-      // ⭐ 프론트엔드 코드가 애타게 찾고 있는 바로 그 이름표들입니다!
+      // 평가 결과는 문자열 그대로 전달 (프론트에서 파싱)
       return {
         id: row.id,
-        employee_id: row.emp_id || "알 수 없음",
-        employee_name: row.name || "익명 사용자",
+        emp_id: row.emp_id || "알 수 없음",
+        name: row.name || "익명 사용자",
         chat_history: chatHistoryArray,
         final_answer: row.final_answer || "",
-        total_score: parsedResult.totalScore || parsedResult.total_score || 0,
-        prompting_score: parsedResult.promptingScore || parsedResult.promptScore || 0,
-        answer_score: parsedResult.answerScore || 0,
-        // 화면에서 JSON.parse를 하므로 반드시 문자열로 넘깁니다.
-        ai_comment: JSON.stringify(parsedResult.feedback || { prompting: "-", answer: "-", overall: "-" }),
-        submitted_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString()
+        evaluation_result: row.evaluation_result || "{}",
+        created_at: row.created_at || new Date().toISOString()
       };
     });
 
