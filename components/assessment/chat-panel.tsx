@@ -19,10 +19,22 @@ export function ChatPanel({ messages, setMessages }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages])
+
+  // textarea 높이 자동 조절
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto"
+      const scrollHeight = textareaRef.current.scrollHeight
+      // 최대 5줄 (약 120px)까지만 늘어나고 그 이상은 스크롤
+      const maxHeight = 120
+      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`
+    }
+  }, [input])
 
   async function handleSend() {
     const text = input.trim()
@@ -74,7 +86,8 @@ export function ChatPanel({ messages, setMessages }: ChatPanelProps) {
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter만 누르면 전송, Shift+Enter는 줄바꿈
     if (e.key === "Enter" && !e.shiftKey) {
       if (e.nativeEvent.isComposing || e.keyCode === 229) return
       e.preventDefault()
@@ -140,22 +153,23 @@ export function ChatPanel({ messages, setMessages }: ChatPanelProps) {
       </div>
 
       <div className="shrink-0 border-t border-border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="AI에게 질문을 입력하세요..."
+            placeholder="AI에게 질문을 입력하세요... (Shift+Enter로 줄바꿈)"
             aria-label="AI 질문 입력"
             disabled={isLoading}
-            className="h-11 flex-1 rounded-lg border border-input bg-background px-4 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            rows={1}
+            className="min-h-[44px] max-h-[120px] flex-1 resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 overflow-y-auto"
           />
           <Button
             type="button"
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
-            className="h-11 gap-1.5 px-4"
+            className="h-11 gap-1.5 px-4 shrink-0"
             aria-label="전송"
           >
             {isLoading ? (
